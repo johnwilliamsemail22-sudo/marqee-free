@@ -375,7 +375,9 @@ const server = http.createServer(async (req, res) => {
     const pSegs = pathname.split('/').filter(Boolean);
     // exact segment matches first, prefix routes (/app/, /media/) only as fallback
     for (const r of routes) {
-      if (r.method !== method || r.path.endsWith('/')) continue;
+      if (r.method !== method) continue;
+      if (r.path === '/') { if (pathname === '/') { matched = { route: r, params: {} }; break; } continue; }
+      if (r.path.endsWith('/')) continue;
       const rSegs = r.path.split('/').filter(Boolean);
       if (rSegs.length !== pSegs.length) continue;
       const params: Record<string, string> = {};
@@ -388,7 +390,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (!matched) {
       for (const r of routes) {
-        if (r.method !== method || !r.path.endsWith('/')) continue;
+        if (r.method !== method || !r.path.endsWith('/') || r.path === '/') continue;
         if (pathname.startsWith(r.path)) { matched = { route: r, params: { rest: pathname.slice(r.path.length) } }; break; }
       }
     }

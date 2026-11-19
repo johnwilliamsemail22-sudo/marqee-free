@@ -72,10 +72,12 @@ function toast(text, kind = '') {
   setTimeout(() => el.remove(), kind === 'err' ? 6500 : 3800);
 }
 
+const KEYQ = new URLSearchParams(location.search).get('key') || '';
+const authHeaders = () => (KEYQ ? { 'x-key': KEYQ } : {});
 async function api(path, body, { quiet = false, method = null } = {}) {
   const opts = body !== undefined
-    ? { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    : (method ? { method } : undefined);
+    ? { method: method || 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body) }
+    : (method || KEYQ ? { method: method || 'GET', headers: authHeaders() } : undefined);
   let res;
   try { res = await fetch(path, opts); }
   catch (e) { if (!quiet) toast('Network error — the ClipIt server is not reachable.', 'err'); throw e; }
