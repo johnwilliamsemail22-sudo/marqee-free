@@ -426,8 +426,11 @@ export class Pipeline {
     const start = opts.start ?? clip.start;
     const end = opts.end ?? clip.end;
     const dur = Math.max(2, end - start);
-    const ssIn = Math.max(0, start - rawStart); // seconds into the raw snapshot where the clip begins
+    let ssIn = Math.max(0, start - rawStart); // seconds into the raw snapshot where the clip begins
     const info = await probe(snap.raw);
+    // sanity: a start marker that lands past the file's end means this raw copy is a
+    // different cut than the marker claims — fall back to "the clip is at the front"
+    if (ssIn > Math.max(1, info.duration - 2)) { rawStart = start - 1; ssIn = 1; }
     const tpl: TemplateId = (opts.template && opts.template !== 'none') ? opts.template : (opts.punchZoom === true ? 'punch' : 'none');
     // templates imply a layout until the user picked one deliberately
     let layout = opts.layout || 'facecam';
