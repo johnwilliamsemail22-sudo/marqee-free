@@ -980,8 +980,6 @@ function renderFiles(root) {
       }
     }), 1500);
   }
-  return () => clearInterval(fileTimer);
-
   root.append(h('div.panel', {},
     h('div.ph', {}, h('h2.grow', {}, 'Find the moments in a VOD'), h('span.chip.gold', {}, 'Free · Unlimited')),
     h('div.field', { style: { marginBottom: '10px' } }, h('label', {}, 'Video or VOD URL'), url),
@@ -991,6 +989,7 @@ function renderFiles(root) {
     h('div', { style: { marginTop: '14px' } }, progBox, done),
     h('div.hint', { style: { marginTop: '8px' } }, 'ClipIt scans the recording the same way it watches a live stream: it looks for the moments where the action (and the chat) spike, and cuts vertical clips from them.')));
   S.onData = () => {};
+  return () => clearInterval(fileTimer);
 }
 
 /* ================================================================
