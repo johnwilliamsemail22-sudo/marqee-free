@@ -639,10 +639,12 @@ async function openEditor(id) {
 
   // ---- text panel
   function textPanel() {
-    const title = h('input.input', { value: draft.title, placeholder: 'Title', oninput: (e) => { draft.title = e.target.value; } });
-    const hook = h('input.input', { value: draft.hook, placeholder: 'On-screen hook line', oninput: (e) => { draft.hook = e.target.value; } });
-    const cap = h('textarea.input', { placeholder: 'Posting caption', oninput: (e) => { draft.captionText = e.target.value; } });
+    const title = h('input.input', { value: draft.title, placeholder: 'Title', oninput: (e) => { draft.title = e.target.value; saveText(); } });
+    const hook = h('input.input', { value: draft.hook, placeholder: 'On-screen hook line', oninput: (e) => { draft.hook = e.target.value; saveText(); } });
+    const cap = h('textarea.input', { placeholder: 'Posting caption', oninput: (e) => { draft.captionText = e.target.value; saveText(); } });
     cap.value = draft.captionText;
+    let saveTimer = null;
+    const saveText = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => { api(`/api/clip/${encodeURIComponent(clip.id)}/text`, { title: draft.title, hook: draft.hook, caption: draft.captionText }, { quiet: true }).catch(() => {}); }, 600); };
     return h('div.panel', {},
       h('h3', {}, 'Text'),
       h('div.field', { style: { marginBottom: '10px' } }, h('label', {}, 'Title'), title),
