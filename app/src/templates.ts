@@ -138,7 +138,7 @@ export function templateStages(id: TemplateId, ctx: TplCtx): Array<[string, stri
       'in', 'c1',
     ]);
     stages.push([
-      `eq=contrast=1.08:saturation=0.88:vignette=PI/5`,
+      `eq=contrast=1.08:saturation=0.88,vignette=PI/5`,
       'c1', 'out',
     ]);
     return stages;
