@@ -156,3 +156,42 @@ export function writeClipText({ transcript, chat, channel }: { transcript?: stri
   const caption = `${title.toLowerCase()} ${hypeTag.trim() || ''}\n\n#${(channel || 'stream').replace(/[^a-z0-9]/gi, '')} #clips #shorts`.trim();
   return { title, hook, caption };
 }
+
+// ---------------------------------------------------------------- offline helpers
+// Run a detector over a full message list [{t, text}] (file mode chat logs).
+export function detectChatSpikes(messages: Array<{ t: number; text: string }>, opts: { sensitivity?: number; cooldown?: number } = {}) {
+  const det = new SpikeDetector(opts);
+  const sorted = [...messages].sort((a, b) => a.t - b.t);
+  if (!sorted.length) return { series: [], spikes: [] };
+  const end = Math.ceil(sorted[sorted.length - 1].t) + 1;
+  const series: Tick[] = []; const spikes: Tick[] = []; let i = 0;
+  for (let s = Math.floor(sorted[0].t); s <= end; s++) {
+    while (i < sorted.length && sorted[i].t < s + 1) { det.add(sorted[i].t, sorted[i].text); i++; }
+    const r = det.tick(s);
+    series.push(r);
+    if (r.spike) spikes.push(r);
+  }
+  return { series, spikes };
+}
+
+// Offline peaks for a generic per-step series (e.g. loudness in dB): z-score against a
+// rolling baseline, keep the strongest peaks separated by `cooldown`, best first.
+export function seriesPeaks(values: number[], step: number, { sensitivity = 0.55, cooldown = 40, baseline = 120, max = 12 } = {}) {
+  const win = Math.round(baseline / step); const scores = new Array(values.length).fill(0);
+  const smooth = values.map((_, i) => { let a = 0; let n = 0; for (let j = Math.max(0, i - 2); j <= i; j++) { a += values[j]; n++; } return a / n; });
+  for (let i = 0; i < values.length; i++) {
+    const from = Math.max(0, i - win); const to = Math.max(from, i - Math.round(4 / step));
+    if (to - from < Math.round(20 / step)) continue;
+    let m = 0; for (let j = from; j < to; j++) m += smooth[j]; m /= to - from;
+    let v = 0; for (let j = from; j < to; j++) v += (smooth[j] - m) ** 2; const sd = Math.sqrt(v / (to - from));
+    scores[i] = (smooth[i] - m) / Math.max(sd, 1.5);
+  }
+  const thr = thresholdFor(sensitivity) * 0.6;
+  const cand = scores.map((s, i) => ({ t: i * step, score: s })).filter((c) => c.score >= thr).sort((a, b) => b.score - a.score);
+  const picked: Array<{ t: number; score: number }> = [];
+  for (const c of cand) {
+    if (picked.length >= max) break;
+    if (picked.every((p) => Math.abs(p.t - c.t) >= cooldown)) picked.push(c);
+  }
+  return { scores, peaks: picked };
+}

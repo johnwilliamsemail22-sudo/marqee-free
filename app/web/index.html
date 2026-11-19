@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0b0d">
+  <title>ClipIt</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="4 4 56 56" fill="none"><path d="M8 40h12l4-6 4 6 6-26 6 34 4-8h12" stroke="currentColor" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span>ClipIt</span>
+        <span class="badge-free">Free</span>
+      </div>
+      <button id="liveChip" class="livechip hidden" title="Recording"></button>
+      <nav class="tabs" id="tabs" aria-label="Views"></nav>
+    </header>
+    <main id="view" class="view" aria-live="polite"></main>
+  </div>
+  <div id="toast" class="toast"></div>
+  <div id="modalRoot"></div>
+  <script src="app.js"></script>
+</body>
+</html>

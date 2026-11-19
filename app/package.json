@@ -1,0 +1,10 @@
+{
+  "name": "clipit",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Auto-clip live streams when chat goes wild. Free, no licence.",
+  "dependencies": {
+    "@napi-rs/canvas": "1.1.0",
+    "ws": "^8.22.2"
+  }
+}
