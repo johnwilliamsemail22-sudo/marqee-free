@@ -21,6 +21,7 @@ export type Cam = { x: number; y: number; w: number; h: number };
 export type CaptionStyle = Partial<{ on: boolean; preset: string; color: string; highlight: string; size: number; position: number; wordsPerLine: number; uppercase: boolean }>;
 
 function run(cmd: string, args: string[], timeoutMs = 600000): Promise<{ stdout: string; stderr: string }> {
+  try { fs.appendFileSync('/tmp/clipit-debug.log', `${new Date().toISOString()} ${cmd} ${args.map((a) => (a.length > 300 ? a.slice(0, 300) + '…' : a)).join(' ')}\n`); } catch { /* best effort */ }
   return new Promise((resolve, reject) => {
     const p = spawn(cmd, args);
     let out = '', err = '';
