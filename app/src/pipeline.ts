@@ -334,6 +334,7 @@ export class Pipeline {
     const first = segs[0];
     const off = Math.max(0, clip.start - first.wStart);
     this.setClip(clip.id, { rawStart: first.wStart });
+    try { fs.writeFileSync(path.join(dir, 'rawmeta.json'), JSON.stringify({ start: first.wStart })); } catch { /* best effort */ }
     return { raw, offset: off, duration: Math.max(3, clip.end - clip.start), rawStart: first.wStart };
   }
 
@@ -393,8 +394,12 @@ export class Pipeline {
   async rerender(clip: any, opts: RenderOpts) {
     const dir = path.join(CLIPS, clip.id);
     const raw = path.join(dir, 'raw.mp4');
+    const metaOf = (file: string): number | null => {
+      try { return JSON.parse(fs.readFileSync(file, 'utf8')).start ?? null; } catch { return null; }
+    };
     if (fs.existsSync(raw)) {
-      const rawStart = clip.rawStart ?? clip.start - 30;
+      // which start does this raw file actually have? the snapshot wrote it down
+      const rawStart = metaOf(path.join(dir, 'rawmeta.json')) ?? clip.rawStart ?? clip.start - 30;
       await this.renderClip(clip, dir, { raw, offset: 0, duration: 1, rawStart }, clip.words || [], opts);
     } else {
       // buffer gone (finished clip): render from the archived trimmed copy, which
@@ -402,6 +407,7 @@ export class Pipeline {
       const archived = path.join(ARCHIVE, 'clips', clip.id, 'raw_cut.mp4');
       if (fs.existsSync(archived)) {
         fs.copyFileSync(archived, raw);
+        try { fs.writeFileSync(path.join(dir, 'rawmeta.json'), JSON.stringify({ start: clip.start - 1 })); } catch { /* best effort */ }
         await this.renderClip(clip, dir, { raw, offset: 0, duration: 1, rawStart: clip.start - 1 }, clip.words || [], opts);
       } else {
         const snap = await this.snapshot({ ...clip, recWindow: clip.recWindow || { w0: clip.start, w1: clip.end } });
@@ -412,7 +418,11 @@ export class Pipeline {
   }
 
   private async renderClip(clip: any, dir: string, snap: { raw: string; offset: number; duration: number; rawStart?: number }, words: Word[], opts: RenderOpts) {
-    const rawStart = snap.rawStart ?? (clip.rawStart ?? clip.start - snap.offset);
+    let rawStart = snap.rawStart;
+    if (rawStart == null) {
+      try { rawStart = JSON.parse(fs.readFileSync(path.join(dir, 'rawmeta.json'), 'utf8')).start; } catch { /* no meta */ }
+    }
+    if (rawStart == null) rawStart = clip.rawStart ?? (clip.start - snap.offset);
     const start = opts.start ?? clip.start;
     const end = opts.end ?? clip.end;
     const dur = Math.max(2, end - start);
