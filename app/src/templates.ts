@@ -48,9 +48,9 @@ function beatGate(beats: number[], pad = 0.4): string {
   return beats.map((t) => `between(t,${Math.max(0, t - 0.05).toFixed(2)},${(t + pad).toFixed(2)})`).join('+');
 }
 
-// wrap hook text into lines of at most ~16 chars for the top title
-function wrapHook(text: string, maxChars = 18): string[] {
-  const words = String(text || '').toUpperCase().split(/\s+/).filter(Boolean).slice(0, 8);
+// wrap hook text into lines of at most ~20 chars for the top title
+function wrapHook(text: string, maxChars = 20): string[] {
+  const words = String(text || '').toUpperCase().replace(/[—-]\s*$/, '').split(/\s+/).filter(Boolean).slice(0, 10);
   const lines: string[] = [];
   let cur = '';
   for (const w of words) {
