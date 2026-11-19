@@ -245,6 +245,7 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bord
 
 /* facecam box editor */
 .facecam-stage { position: relative; border-radius: 14px; overflow: hidden; background: #000; user-select: none; touch-action: none; }
+.facecam-stage img, .facecam-stage video { width: 100%; height: 100%; display: block; object-fit: contain; background: #000; }
 .facecam-stage > * { pointer-events: none; }
 .facecam-stage .box { position: absolute; pointer-events: auto; cursor: move; border-radius: 6px; box-shadow: 0 0 0 2px var(--accent), 0 0 0 9999px rgba(0, 0, 0, .5); }
 .facecam-stage .box.dragging { box-shadow: 0 0 0 2px var(--accent), 0 0 0 9999px rgba(0, 0, 0, .35); }
@@ -253,6 +254,8 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bord
 .facecam-stage .hd.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
 .facecam-stage .hd.ne { right: -8px; top: -8px; cursor: nesw-resize; }
 .facecam-stage .hd.sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+
+.modal-card > .editor { flex: 1; min-height: 0; }
 
 /* covers */
 .covers { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; max-width: 480px; }

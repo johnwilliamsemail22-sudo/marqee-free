@@ -66,11 +66,13 @@ export async function resolveStream(ch: Parsed): Promise<{ inputs: string[] }> {
     if (!j.livestream || !j.playback_url) throw offline();
     return { inputs: [j.playback_url] };
   }
-  const fmt = ch.platform === 'youtube' ? 'bv*[height<=1080]+ba/b[height<=1080]/b' : 'best[height<=1080]/best';
+  const fmt = 'bv*[height<=1080]+ba/b[height<=1080]/b';
   try {
     const out = await ytdlp(['-g', '-f', fmt, ch.url]);
     const urls = out.trim().split(/\r?\n/).filter((l) => l.startsWith('http'));
     if (!urls.length) throw offline();
+    // Twitch and YouTube both serve picture and sound apart at source quality: two inputs
+    // (video, audio) that the recorder merges with -copyts. One input = already muxed.
     return { inputs: urls.slice(0, 2) };
   } catch (e: any) {
     if (/not currently live|offline|does not exist|not live|will begin|Premieres|no video formats/i.test(`${e.message} ${e.stderr || ''}`)) throw offline();

@@ -293,7 +293,7 @@ export class Pipeline {
     const win = clip.recWindow || { w0: clip.start, w1: clip.end };
     const segs = this.getSegments(clip);
     if (!segs.length) throw new Error('the buffer window is gone (clip cut too late)');
-    const raw = path.join(dir, 'raw.ts');
+    const raw = path.join(dir, 'raw.mp4');
     const list = path.join(dir, 'concat.txt');
     fs.writeFileSync(list, segs.map((s) => `file '${s.file.replace(/'/g, "'\\''")}'`).join('\n'));
     spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', raw], { timeout: 120000 });
@@ -316,7 +316,7 @@ export class Pipeline {
     let words: Word[] = [];
     let transcript = '';
     try {
-      await run('ffmpeg', ['-hide_banner', '-y', '-ss', String(snap.offset), '-i', snap.raw, '-t', String(snap.duration), '-vn', '-ac', '1', '-ar', '16000', wav], 120000);
+      await run('ffmpeg', ['-hide_banner', '-y', '-ss', String(snap.offset), '-i', snap.raw, '-t', String(snap.duration), '-vn', '-ac', '1', '-ar', '16000', '-af', 'highpass=f=90,lowpass=f=7600,dynaudnorm=f=150:g=15', wav], 120000);
       const wordsFile = path.join(dir, 'words.json');
       await run('python3', [path.join(import.meta.dirname ?? '.', 'transcribe.py'), wav, wordsFile, 'small'], 300000);
       const j = JSON.parse(fs.readFileSync(wordsFile, 'utf8'));
@@ -359,7 +359,7 @@ export class Pipeline {
   // re-render with editor options (used by the pipeline and by /api/clip/:id/render)
   async rerender(clip: any, opts: RenderOpts) {
     const dir = path.join(CLIPS, clip.id);
-    const raw = path.join(dir, 'raw.ts');
+    const raw = path.join(dir, 'raw.mp4');
     if (fs.existsSync(raw)) {
       const rawStart = clip.rawStart ?? clip.start - 30;
       await this.renderClip(clip, dir, { raw, offset: 0, duration: 1, rawStart }, clip.words || [], opts);
@@ -407,7 +407,7 @@ export class Pipeline {
     const out = path.join(dir, 'clip_vertical.mp4');
     await run('ffmpeg', ['-hide_banner', '-y', '-ss', String(ssIn), '-i', snap.raw, '-t', String(dur),
       '-filter_complex', stages.join(';'), '-map', '[vo]', '-map', '0:a?',
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', out], 900000);
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-af', 'dynaudnorm=f=150:g=15', '-movflags', '+faststart', out], 900000);
     this.setClip(clip.id, { video: `/media/clips/${clip.id}/clip_vertical.mp4`, start, end });
   }
 
@@ -423,7 +423,7 @@ export class Pipeline {
       }
       // an archived copy of the recording itself, trimmed to the clip window, so the
       // clip can always be re-rendered with a different layout or captions later
-      const raw = path.join(dir, 'raw.ts');
+      const raw = path.join(dir, 'raw.mp4');
       if (fs.existsSync(raw) && !fs.existsSync(path.join(dest, 'raw_cut.mp4'))) {
         const rawStart = clip.rawStart ?? clip.start - 30;
         spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y',
@@ -449,7 +449,7 @@ export class Pipeline {
   // a new cover variant on demand ("shuffle the style")
   async newCover(clip: any, style: CoverStyle, variant: number): Promise<string> {
     const dir = path.join(CLIPS, clip.id);
-    const raw = path.join(dir, 'raw.ts');
+    const raw = path.join(dir, 'raw.mp4');
     if (!fs.existsSync(raw)) throw new Error('the raw recording for this clip is gone; covers need it');
     const hook = clip.hook || writeClipText({ transcript: clip.transcript, chat: clip.chatSample, channel: clip.channel }).hook;
     const at = rawStart + ((start + end) / 2 - rawStart);
