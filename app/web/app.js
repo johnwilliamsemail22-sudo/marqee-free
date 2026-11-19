@@ -72,10 +72,10 @@ function toast(text, kind = '') {
   setTimeout(() => el.remove(), kind === 'err' ? 6500 : 3800);
 }
 
-async function api(path, body, { quiet = false } = {}) {
+async function api(path, body, { quiet = false, method = null } = {}) {
   const opts = body !== undefined
-    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    : undefined;
+    ? { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+    : (method ? { method } : undefined);
   let res;
   try { res = await fetch(path, opts); }
   catch (e) { if (!quiet) toast('Network error — the ClipIt server is not reachable.', 'err'); throw e; }
@@ -279,7 +279,7 @@ function cardOverlay(c) {
    LIVE view
 ================================================================ */
 const LAYOUTS = [
-  ['facecam', 'Facecam + game'], ['split', 'Split 50/50'], ['face', 'Face only'],
+  ['facecam', 'Facecam + game'], ['reaction', 'Game + facecam'], ['split', 'Split 50/50'], ['face', 'Face only'],
   ['center', 'Center crop'], ['blur', 'Blurred fit'],
 ];
 function detectPlatform(v) {
@@ -353,7 +353,67 @@ function renderLive(root) {
           h('div.field.grow', { style: { minWidth: '220px' } },
             h('label', {}, 'Sensitivity'), h('div.row', {}, sens, sensLbl))),
         h('div', { style: { marginTop: '16px' } }, btn), errBox),
+      autopilotPanel(),
       h('div', { style: { marginTop: '18px' } }, h('h3', { style: { margin: '0 0 10px', color: 'var(--muted)' } }, 'How it works'), steps));
+  }
+
+  // ---- auto-pilot: the watchlist. ClipIt watches these channels by itself,
+  // starts recording the moment they go live, clips automatically, and stops
+  // when the stream ends. You just come here and download the clips.
+  function autopilotPanel() {
+    const input = h('input.input', { placeholder: 'Add a channel to auto-pilot — paste a Twitch, Kick or YouTube link' });
+    const platSel2 = h('select.input', { style: { maxWidth: '130px' } },
+      h('option', { value: 'auto' }, 'Auto'),
+      h('option', { value: 'twitch' }, 'Twitch'),
+      h('option', { value: 'kick' }, 'Kick'),
+      h('option', { value: 'youtube' }, 'YouTube'));
+    input.addEventListener('input', () => { const p = detectPlatform(input.value); if (p) platSel2.value = p; });
+    const addBtn = h('button.btn.primary', {}, icon('play'), 'Put on auto-pilot');
+    const list = h('div.aplist', {});
+    const err = h('div');
+    addBtn.addEventListener('click', () => guard(async () => {
+      const v = input.value.trim();
+      if (!v) { err.innerHTML = ''; err.append(h('div.msg.err', {}, 'Paste a channel first.')); return; }
+      addBtn.disabled = true;
+      try {
+        const body = { channel: v };
+        if (platSel2.value !== 'auto') body.platform = platSel2.value;
+        await api('/api/watchlist', body);
+        input.value = ''; platSel2.value = 'auto';
+        toast(`${v} is on auto-pilot — I'll clip it whenever it's live`);
+        await pollOnce();
+      } catch { /* toasted */ }
+      addBtn.disabled = false;
+    }));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') addBtn.click(); });
+    const paintList = () => {
+      list.innerHTML = '';
+      const entries = (S.state && S.state.watchlist) || [];
+      if (!entries.length) {
+        list.append(h('div.hint', {}, 'Nobody on auto-pilot yet. Add channels and ClipIt keeps watch: records when they go live, clips the spikes, stops when they end — no buttons, ever.'));
+        return;
+      }
+      for (const w of entries) {
+        const chip = w.recording ? h('span.chip.green', {}, h('span.dot'), 'recording') : h('span.chip', {}, h('span.dot'), 'waiting for live');
+        const rm = h('button.btn.sm.danger', {}, 'Remove');
+        rm.addEventListener('click', () => guard(async () => {
+          await api(`/api/watchlist/${encodeURIComponent(w.channel)}`, undefined, { method: 'DELETE' });
+          await pollOnce();
+        }));
+        list.append(h('div.aprow', {},
+          h('div.apmain', {}, h('b', {}, w.label), h('span.small.muted', {}, ` · ${w.clips || 0} clip${(w.clips || 0) === 1 ? '' : 's'} this session`)),
+          chip, rm));
+      }
+    };
+    const prev = () => { paintList(); };
+    S.onData = () => { if (S.view === 'live' && builtFor === 'idle') prev(); };
+    paintList();
+    S.apTimer = setInterval(() => { if (builtFor === 'idle') guard(pollOnce); }, 6000);
+    return h('div.panel', { style: { marginTop: '18px' } },
+      h('div.ph', {}, h('h2.grow', {}, 'Auto-pilot'), h('span.chip.green', {}, 'runs by itself')),
+      h('div.row', { style: { flexWrap: 'wrap' } }, h('div.field.grow', { style: { minWidth: '220px' } }, input), platSel2, addBtn),
+      h('div', { style: { marginTop: '10px' } }, err),
+      h('div', { style: { marginTop: '12px' } }, list));
   }
 
   function buildRec() {
@@ -595,6 +655,7 @@ async function openEditor(id) {
     layout: clip.layout || 'facecam',
     start: clip.start, end: clip.end,
     caption: { on: true, preset: 'pop', position: 0.72, size: 70, wordsPerLine: 3, uppercase: true },
+    template: clip.template || 'none',
     title: clip.title || '', hook: clip.hook || '', captionText: clip.caption || '',
   };
 
@@ -651,6 +712,32 @@ async function openEditor(id) {
       h('div.field', { style: { marginBottom: '10px' } }, h('label', {}, 'Hook'), hook),
       h('div.field', {}, h('label', {}, 'Posting caption'), cap),
       clip.transcript ? h('div.hint', { style: { marginTop: '10px', lineHeight: 1.6 } }, clip.transcript) : null);
+  }
+
+  // ---- edit-style templates (viral looks, one click)
+  function templatesPanel() {
+    const tpls = (S.state && S.state.templates) || [];
+    const grid = h('div.tplgrid', {});
+    const paint = () => {
+      grid.innerHTML = '';
+      for (const t of tpls) {
+        const card = h('button.tplcard' + (draft.template === t.id ? '.active' : ''), { style: { '--tc': t.accent }, type: 'button' },
+          h('span.tpldot'),
+          h('span.tplname', {}, t.label),
+          h('span.tpldesc', {}, t.desc));
+        card.addEventListener('click', () => guard(async () => {
+          if (draft.template === t.id) return;
+          draft.template = t.id;
+          paint();
+          await api(`/api/clip/${encodeURIComponent(clip.id)}/render`, { template: t.id, layout: t.id === 'speed' ? 'reaction' : undefined });
+          toast(`${t.label} edit — re-rendering`);
+          pollClip();
+        }));
+        grid.append(card);
+      }
+    };
+    paint();
+    return h('div.panel', {}, h('h3', {}, 'Edit style'), grid);
   }
 
   // ---- layout + facecam box editor
@@ -901,7 +988,7 @@ async function openEditor(id) {
   const pane = h('div.edpane');
   const buildPane = () => {
     pane.innerHTML = '';
-    pane.append(scorePanel(), textPanel(), layoutPanel(), captionsPanel(), coversPanel(), trimPanel(), exportPanel());
+    pane.append(scorePanel(), textPanel(), templatesPanel(), layoutPanel(), captionsPanel(), coversPanel(), trimPanel(), exportPanel());
   };
   buildPane();
   const m = h('div.modal', { onclick: (e) => { if (e.target === m) close(); } },
@@ -1058,7 +1145,10 @@ function renderSettings(root) {
 }
 
 /* ---------------- boot ---------------- */
-VIEWS.live.render = renderLive;
+VIEWS.live.render = (root) => {
+  const inner = renderLive(root);
+  return () => { if (S.apTimer) { clearInterval(S.apTimer); S.apTimer = null; } if (typeof inner === 'function') inner(); };
+};
 VIEWS.clips.render = renderClips;
 VIEWS.files.render = renderFiles;
 VIEWS.settings.render = renderSettings;

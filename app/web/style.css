@@ -304,3 +304,27 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bord
   .vbars { grid-template-columns: 1fr; }
   .livechip span.txt { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* ---------- edit-style template cards ---------- */
+.tplgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tplcard {
+  position: relative; text-align: left; cursor: pointer; border: 1px solid var(--line);
+  background: var(--surface-2); border-radius: 14px; padding: 12px 13px 11px; color: var(--text);
+  transition: border-color .2s var(--ease), background .2s var(--ease), transform .15s var(--ease);
+  display: grid; gap: 3px; justify-items: start;
+}
+.tplcard:hover { background: var(--elev); transform: translateY(-2px); }
+.tplcard.active { border-color: var(--tc, var(--accent)); background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--surface-2)); box-shadow: 0 0 0 1px var(--tc, var(--accent)) inset; }
+.tpldot { width: 9px; height: 9px; border-radius: 50%; background: var(--tc, var(--accent)); box-shadow: 0 0 10px var(--tc, var(--accent)); margin-bottom: 3px; }
+.tplname { font-weight: 700; font-size: 13px; letter-spacing: -.01em; }
+.tpldesc { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.tplcard.active .tplname { color: var(--tc, var(--accent)); }
+
+/* ---------- auto-pilot watchlist ---------- */
+.aplist { display: flex; flex-direction: column; gap: 8px; }
+.aprow {
+  display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--line); flex-wrap: wrap;
+}
+.aprow .apmain { flex: 1; min-width: 150px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.aprow b { font-size: 13.5px; }

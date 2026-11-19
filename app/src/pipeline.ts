@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { viralityScore, writeClipText, isHype, type Word } from './detect.ts';
+import { templateStages, templateCaptions, templateAccent, TEMPLATES, type TemplateId, type TplCtx } from './templates.ts';
 
 const OW = 1080; const OH = 1920;
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
@@ -64,6 +65,17 @@ function facecam(src: { width: number; height: number }, cam: Cam | null, split 
     + `[g0]crop=${gw}:${gh}:${gx}:0,scale=${OW}:${botH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${OW}:${botH}[game];`
     + '[cam][game]vstack=inputs=2,setsar=1[v]';
 }
+// gameplay on top, camera below (the reaction-clip layout)
+function reaction(src: { width: number; height: number }, cam: Cam | null): string {
+  const gameH = even(OH * 0.58); const camH = OH - gameH;
+  const gw = Math.min(src.width, even(src.height * (OW / gameH)));
+  const gx = Math.round((src.width - gw) / 2);
+  const c = camCrop(src, cam);
+  return '[0:v]split=2[c0][g0];'
+    + `[g0]crop=${gw}:${src.height}:${gx}:0,scale=${OW}:${gameH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${OW}:${gameH}[game];`
+    + `[c0]crop=${c.w}:${c.h}:${c.x}:${c.y},scale=${OW}:${camH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${OW}:${camH},${SHARPEN}[cam];`
+    + '[game][cam]vstack=inputs=2,setsar=1[v]';
+}
 function face(src: { width: number; height: number }, cam: Cam | null): string {
   const c = cam || DEFAULT_CAM;
   const cw = Math.min(src.width, even(src.height * (OW / OH)));
@@ -80,8 +92,8 @@ function blur(src: { width: number; height: number }): string {
     + `[fg0]scale=${OW}:-2:flags=lanczos[fg];`
     + '[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[v]';
 }
-export const LAYOUTS = ['facecam', 'split', 'face', 'center', 'blur'];
-const NEEDS_CAM = new Set(['facecam', 'split']);
+export const LAYOUTS = ['facecam', 'split', 'face', 'center', 'blur', 'reaction'];
+const NEEDS_CAM = new Set(['facecam', 'split', 'reaction']);
 
 function layoutFilter(name: string, src: { width: number; height: number }, cam: Cam | null): string {
   switch (name) {
@@ -89,6 +101,7 @@ function layoutFilter(name: string, src: { width: number; height: number }, cam:
     case 'face': return face(src, cam);
     case 'center': return center(src);
     case 'blur': return blur(src);
+    case 'reaction': return reaction(src, cam);
     default: return facecam(src, cam, 0.38);
   }
 }
@@ -261,7 +274,7 @@ export async function makeCover(clipDir: string, frameSrc: string, at: number, h
 }
 
 // ---------------------------------------------------------------- the pipeline
-export type RenderOpts = { layout?: string; cam?: Cam | null; caption?: CaptionStyle; punchZoom?: boolean; start?: number; end?: number };
+export type RenderOpts = { layout?: string; cam?: Cam | null; caption?: CaptionStyle; punchZoom?: boolean; template?: TemplateId; start?: number; end?: number };
 
 export class Pipeline {
   private running = false;
@@ -353,7 +366,7 @@ export class Pipeline {
   }
 
   private renderOptsFor(clip: any): RenderOpts {
-    return { layout: clip.layout || 'facecam', cam: clip.cam ?? undefined, caption: clip.captionStyle ?? { on: true, preset: 'pop' }, punchZoom: clip.punchZoom ?? true };
+    return { layout: clip.layout || 'facecam', cam: clip.cam ?? undefined, caption: clip.captionStyle ?? { on: true }, template: clip.template || 'none' };
   }
 
   // re-render with editor options (used by the pipeline and by /api/clip/:id/render)
@@ -377,25 +390,40 @@ export class Pipeline {
     const dur = Math.max(2, end - start);
     const ssIn = Math.max(0, start - rawStart); // seconds into the raw snapshot where the clip begins
     const info = await probe(snap.raw);
-    // build one -filter_complex: layout -> zoom -> subtitles
-    const cap = { on: true, preset: 'pop', ...((opts.caption || {}) as any) };
+    const tpl: TemplateId = (opts.template && opts.template !== 'none') ? opts.template : (opts.punchZoom === true ? 'punch' : 'none');
+    // templates imply a layout until the user picked one deliberately
+    let layout = opts.layout || 'facecam';
+    if (tpl === 'speed' && !opts.layout) layout = 'reaction';
+    // caption style: template defaults, then the user's overrides
+    const cap = { on: true, preset: 'pop', ...(templateCaptions(tpl) || {}), ...((opts.caption || {}) as any) } as any;
+    if (cap.highlight && cap.highlight === '#FFD84D' && tpl !== 'none') cap.highlight = templateAccent(tpl);
     let assFile: string | null = null;
     if (cap.on !== false && words?.length) {
       assFile = path.join(dir, 'captions.ass');
       fs.writeFileSync(assFile, buildAss(words, cap as CaptionStyle, dur, start));
     }
-    // build one -filter_complex: layout -> zoom -> subtitles
+    // build one -filter_complex: layout -> template stages -> zoom -> subtitles
     const stages: string[] = [];
     const escPath = (p: string) => p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
-    let chain = layoutFilter(opts.layout || 'facecam', info, opts.cam ?? this.getCam(clip.channel));
+    let chain = layoutFilter(layout, info, opts.cam ?? this.getCam(clip.channel));
     chain = chain.replace(/\[v\]$/, '[L]');
     stages.push(chain);
     let cur = '[L]';
-    if (opts.punchZoom !== false && words?.length) {
+    if (tpl !== 'none') {
+      const beats = zoomBeats(words || [], start, dur);
+      const ctx: TplCtx = { dur, beats, hook: clip.hook || writeClipText({ transcript: clip.transcript, chat: clip.chatSample, channel: clip.channel }).hook, accent: templateAccent(tpl), channel: String(clip.channel || 'us') };
+      let idx = 0;
+      for (const [filter, , outTag] of templateStages(tpl, ctx)) {
+        stages.push(`${cur}${filter}[${outTag}${idx}]`);
+        cur = `[${outTag}${idx}]`;
+        idx++;
+      }
+    }
+    if (tpl === 'punch' && words?.length) {
       const beats = zoomBeats(words, start, dur);
       if (beats.length) {
         const sig = beats.map((t) => `between(it,${t},${(t + 0.55).toFixed(2)})`).join('+');
-        stages.push(`[L]zoompan=z='min(1.12,1+0.12*min(1,${sig}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${OW}x${OH}:fps=30[Z]`);
+        stages.push(`${cur}zoompan=z='min(1.12,1+0.12*min(1,${sig}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${OW}x${OH}:fps=30[Z]`);
         cur = '[Z]';
       }
     }
