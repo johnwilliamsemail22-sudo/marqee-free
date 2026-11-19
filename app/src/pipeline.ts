@@ -404,7 +404,7 @@ export class Pipeline {
     } else {
       // buffer gone (finished clip): render from the archived trimmed copy, which
       // starts 1 s before clip.start
-      const archived = path.join(ARCHIVE, 'clips', clip.id, 'raw_cut.mp4');
+      const archived = path.join(ARCHIVE, clip.id, 'raw_cut.mp4');
       if (fs.existsSync(archived)) {
         fs.copyFileSync(archived, raw);
         try { fs.writeFileSync(path.join(dir, 'rawmeta.json'), JSON.stringify({ start: clip.start - 1 })); } catch { /* best effort */ }
@@ -521,8 +521,12 @@ export class Pipeline {
     const raw = path.join(dir, 'raw.mp4');
     if (!fs.existsSync(raw)) throw new Error('the raw recording for this clip is gone; covers need it');
     const hook = clip.hook || writeClipText({ transcript: clip.transcript, chat: clip.chatSample, channel: clip.channel }).hook;
-    const at = rawStart + ((start + end) / 2 - rawStart);
-    const c = await makeCover(dir, raw, Math.max(0, Math.min(at, rawStart + 60)), hook, style, variant);
+    let rawStart = clip.rawStart;
+    if (rawStart == null) { try { rawStart = JSON.parse(fs.readFileSync(path.join(dir, 'rawmeta.json'), 'utf8')).start; } catch { /* none */ } }
+    if (rawStart == null) rawStart = clip.start - 30;
+    const mid = (clip.start + clip.end) / 2;
+    const at = Math.max(0, Math.min(rawStart + (mid - rawStart), rawStart + 60));
+    const c = await makeCover(dir, raw, at, hook, style, variant);
     return `/media/clips/${clip.id}/${path.basename(c)}`;
   }
 }
