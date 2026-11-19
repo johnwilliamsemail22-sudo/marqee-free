@@ -352,7 +352,7 @@ export class Pipeline {
     try {
       await run('ffmpeg', ['-hide_banner', '-y', '-ss', String(snap.offset), '-i', snap.raw, '-t', String(snap.duration), '-vn', '-ac', '1', '-ar', '16000', '-af', 'highpass=f=90,lowpass=f=7600,dynaudnorm=f=150:g=15', wav], 120000);
       const wordsFile = path.join(dir, 'words.json');
-      await run('python3', [path.join(import.meta.dirname ?? '.', 'transcribe.py'), wav, wordsFile, 'small'], 300000);
+      await run('python3', [path.join(import.meta.dirname ?? '.', 'transcribe.py'), wav, wordsFile, 'base'], 300000);
       const j = JSON.parse(fs.readFileSync(wordsFile, 'utf8'));
       words = (j.words || []).map((w: any) => ({ w: w.w, s: w.s + clip.start, e: w.e + clip.start }));
       transcript = j.text || words.map((w) => w.w).join(' ');
