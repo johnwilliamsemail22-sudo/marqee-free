@@ -290,13 +290,32 @@ export class Pipeline {
 
   enqueue(id: string) { this.queue.push(id); setTimeout(() => this.next(), 300); }
 
+  // re-render an existing clip (layout/template/caption/trim changes) without redoing
+  // the snapshot + transcription
+  rerenderSoon(id: string) {
+    const clip = this.getClip(id);
+    if (!clip) return;
+    clip._rerender = true;
+    this.queue.push(id);
+    setTimeout(() => this.next(), 100);
+  }
+
   async next() {
     if (this.running || !this.queue.length) return;
     const id = this.queue.shift()!;
     const clip = this.getClip(id);
     if (!clip) { this.next(); return; }
     this.running = true;
-    try { await this.process(clip); } catch (e: any) { this.setClip(id, { status: 'error', error: e.message }); }
+    try {
+      if (clip._rerender) {
+        delete clip._rerender;
+        this.setClip(id, { status: 'processing', progress: 0.5 });
+        await this.rerender(clip, this.renderOptsFor(clip));
+        this.setClip(id, { status: 'done', progress: 1 });
+      } else {
+        await this.process(clip);
+      }
+    } catch (e: any) { this.setClip(id, { status: 'error', error: e.message }); }
     this.running = false;
     setTimeout(() => this.next(), 200);
   }
@@ -377,8 +396,16 @@ export class Pipeline {
       const rawStart = clip.rawStart ?? clip.start - 30;
       await this.renderClip(clip, dir, { raw, offset: 0, duration: 1, rawStart }, clip.words || [], opts);
     } else {
-      const snap = await this.snapshot({ ...clip, recWindow: clip.recWindow || { w0: clip.start, w1: clip.end } });
-      await this.renderClip(clip, dir, snap, clip.words || [], opts);
+      // buffer gone (finished clip): render from the archived trimmed copy, which
+      // starts 1 s before clip.start
+      const archived = path.join(ARCHIVE, 'clips', clip.id, 'raw_cut.mp4');
+      if (fs.existsSync(archived)) {
+        fs.copyFileSync(archived, raw);
+        await this.renderClip(clip, dir, { raw, offset: 0, duration: 1, rawStart: clip.start - 1 }, clip.words || [], opts);
+      } else {
+        const snap = await this.snapshot({ ...clip, recWindow: clip.recWindow || { w0: clip.start, w1: clip.end } });
+        await this.renderClip(clip, dir, snap, clip.words || [], opts);
+      }
     }
     this.exportBundle(clip);
   }
